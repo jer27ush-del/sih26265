@@ -1,0 +1,2 @@
+import { Construction } from 'lucide-react';
+export function PlaceholderPage({title}: {title:string}) {return <section><div className="page-heading"><div><div className="breadcrumb">FDR Desk <span>/</span> {title}</div><h1>{title}</h1><p>This module is scheduled for a later development phase.</p></div></div><div className="empty-state large-empty"><Construction size={34}/><strong>{title} is not implemented in Phase 1</strong><p>The foundation phase is limited to authentication simulation, role permissions, institution management and audit logging.</p></div></section>;}

@@ -1,0 +1,8 @@
+# Keep secrets, local data and caches out of the image.
+.env
+db.sqlite3
+private_media/
+__pycache__/
+**/__pycache__/
+.venv/
+scripts/

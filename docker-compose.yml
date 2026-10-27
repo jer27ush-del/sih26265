@@ -1,0 +1,43 @@
+# Starts PostgreSQL and the Django API. The React frontend runs separately with `npm run dev` (Vite proxies /api).
+services:
+  db:
+    image: postgres:16
+    environment:
+      POSTGRES_DB: aicte_fdr
+      POSTGRES_USER: aicte
+      POSTGRES_PASSWORD: change-this-password
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U aicte -d aicte_fdr"]
+      interval: 5s
+      retries: 10
+
+  api:
+    build: ./backend
+    env_file: ./backend/.env
+    environment:
+      # Forced here so a local backend/.env with DB_ENGINE=sqlite cannot switch the container to SQLite.
+      DB_ENGINE: postgres
+      POSTGRES_HOST: db
+      DJANGO_DEBUG: "0"
+      DJANGO_SECURE_SSL_REDIRECT: "0"
+    depends_on:
+      db:
+        condition: service_healthy
+    volumes:
+      - private_media:/app/private_media
+    ports:
+      - "8000:8000"
+    command: >
+      sh -c "python manage.py makemigrations fdr --noinput &&
+             python manage.py migrate --noinput &&
+             python manage.py apply_db_guards &&
+             python manage.py seed_demo &&
+             gunicorn config.wsgi:application --bind 0.0.0.0:8000 --workers 3"
+
+volumes:
+  pgdata:
+  private_media:
