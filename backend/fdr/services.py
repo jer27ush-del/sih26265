@@ -134,6 +134,10 @@ def reply_to_query(user, query_id, reply, ip=None):
 
 # ----------------------------------------------------------------- registration & documents
 def _store_document(fdr, upload, user):
+    if settings.IS_VERCEL:
+        raise DomainError(
+            'Document uploads are unavailable on Vercel until private durable object storage is configured.'
+        )
     data = upload.read()
     mime = domain.sniff_mime(data[:16])
     domain.validate_document(mime or '', len(data), current_settings()['allowedDocumentTypes'],

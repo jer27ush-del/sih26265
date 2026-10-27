@@ -1,5 +1,5 @@
-/** Thin fetch wrapper for the Django API. The Vite dev server proxies /api to the backend (see vite.config.ts). */
-export const API_BASE = '/api';
+/** Vite proxies /api locally; set VITE_API_BASE_URL to the deployed Django API origin plus /api. */
+export const API_BASE = (import.meta.env.VITE_API_BASE_URL || '/api').replace(/\/+$/, '');
 const TOKEN_KEY = 'aicte-token';
 
 export class ApiError extends Error {

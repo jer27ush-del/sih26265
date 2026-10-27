@@ -1,6 +1,7 @@
 """Django settings. Secrets and database details come from environment variables (see .env.example)."""
 import os
 from pathlib import Path
+from urllib.parse import urlsplit
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 
@@ -28,13 +29,44 @@ def env_bool(name, default=False):
     return env(name, str(default)).strip().lower() in ('1', 'true', 'yes', 'on')
 
 
+def env_list(name, default=''):
+    return [value.strip() for value in env(name, default).split(',') if value.strip()]
+
+
+def _vercel_hostname(value):
+    value = (value or '').strip()
+    if not value or '*' in value:
+        return None
+    parsed = urlsplit(value if '://' in value else f'//{value}')
+    if parsed.username or parsed.password or parsed.path not in ('', '/') or parsed.query or parsed.fragment:
+        return None
+    return parsed.hostname
+
+
 SECRET_KEY = env('DJANGO_SECRET_KEY', 'dev-only-change-me')
-DEBUG = env_bool('DJANGO_DEBUG', True)
+DEBUG = env_bool('DJANGO_DEBUG', False)
 if not DEBUG and SECRET_KEY in ('', 'dev-only-change-me', 'replace-with-a-long-random-string'):
     raise RuntimeError('Set DJANGO_SECRET_KEY to a long random value before running with DJANGO_DEBUG=0.')
-ALLOWED_HOSTS = [h.strip() for h in env('DJANGO_ALLOWED_HOSTS', 'localhost,127.0.0.1').split(',') if h.strip()]
+if not DEBUG and (len(SECRET_KEY) < 50 or len(set(SECRET_KEY)) < 5):
+    raise RuntimeError('Production DJANGO_SECRET_KEY must be at least 50 characters and randomly generated.')
+ALLOWED_HOSTS = env_list('DJANGO_ALLOWED_HOSTS', 'localhost,127.0.0.1')
+VERCEL_HOSTS = []
+for _vercel_host_variable in ('VERCEL_URL', 'VERCEL_PROJECT_PRODUCTION_URL'):
+    _vercel_host = _vercel_hostname(env(_vercel_host_variable, ''))
+    if _vercel_host and _vercel_host not in VERCEL_HOSTS:
+        VERCEL_HOSTS.append(_vercel_host)
+    if _vercel_host and _vercel_host not in ALLOWED_HOSTS:
+        ALLOWED_HOSTS.append(_vercel_host)
+
+CSRF_TRUSTED_ORIGINS = env_list('DJANGO_CSRF_TRUSTED_ORIGINS')
+for _vercel_host in VERCEL_HOSTS:
+    _vercel_origin = f'https://{_vercel_host}'
+    if _vercel_origin not in CSRF_TRUSTED_ORIGINS:
+        CSRF_TRUSTED_ORIGINS.append(_vercel_origin)
+
 # Demo-only switch: enables the one-click role switcher. Must be off in any real deployment.
 DEMO_MODE = env_bool('FDR_DEMO_MODE', True)
+IS_VERCEL = env_bool('VERCEL', False)
 
 INSTALLED_APPS = [
     'django.contrib.admin',
@@ -70,9 +102,22 @@ TEMPLATES = [{
 WSGI_APPLICATION = 'config.wsgi.application'
 
 # Database: PostgreSQL by default (as the spec requires). SQLite is offered only for a quick local demo.
-if env('DB_ENGINE', 'postgres') == 'sqlite':
+DB_ENGINE = env('DB_ENGINE', 'postgres').strip().lower()
+if not DEBUG:
+    if DB_ENGINE != 'postgres':
+        raise RuntimeError('Production requires a persistent PostgreSQL database; SQLite is for local development only.')
+    required_database_settings = ('POSTGRES_DB', 'POSTGRES_USER', 'POSTGRES_PASSWORD', 'POSTGRES_HOST')
+    missing_database_settings = [name for name in required_database_settings if not env(name, '').strip()]
+    if missing_database_settings:
+        raise RuntimeError(
+            'Set the production database environment variables: ' + ', '.join(missing_database_settings) + '.'
+        )
+    if env('POSTGRES_PASSWORD') in ('aicte', 'change-this-password'):
+        raise RuntimeError('Replace the sample PostgreSQL password before running in production.')
+
+if DB_ENGINE == 'sqlite':
     DATABASES = {'default': {'ENGINE': 'django.db.backends.sqlite3', 'NAME': BASE_DIR / 'db.sqlite3'}}
-else:
+elif DB_ENGINE == 'postgres':
     DATABASES = {'default': {
         'ENGINE': 'django.db.backends.postgresql',
         'NAME': env('POSTGRES_DB', 'aicte_fdr'),
@@ -80,8 +125,10 @@ else:
         'PASSWORD': env('POSTGRES_PASSWORD', 'aicte'),
         'HOST': env('POSTGRES_HOST', 'localhost'),
         'PORT': env('POSTGRES_PORT', '5432'),
-        'CONN_MAX_AGE': 60,
+        'CONN_MAX_AGE': int(env('POSTGRES_CONN_MAX_AGE', '0' if IS_VERCEL else '60')),
     }}
+else:
+    raise RuntimeError("DB_ENGINE must be either 'postgres' or 'sqlite'.")
 
 AUTH_USER_MODEL = 'fdr.User'
 
@@ -126,6 +173,10 @@ REST_FRAMEWORK = {
     'DEFAULT_THROTTLE_RATES': {'anon': '60/minute'},
 }
 
+INSTALLED_APPS.insert(0, 'corsheaders')
+MIDDLEWARE.insert(0, 'corsheaders.middleware.CorsMiddleware')
+CORS_ALLOWED_ORIGINS = env_list('DJANGO_CORS_ALLOWED_ORIGINS')
+
 EMAIL_BACKEND = 'django.core.mail.backends.smtp.EmailBackend'
 EMAIL_HOST = env('EMAIL_HOST', 'localhost')
 EMAIL_PORT = int(env('EMAIL_PORT', '25'))
@@ -146,3 +197,5 @@ if not DEBUG:
     SESSION_COOKIE_SECURE = True
     CSRF_COOKIE_SECURE = True
     SECURE_SSL_REDIRECT = env_bool('DJANGO_SECURE_SSL_REDIRECT', True)
+    SECURE_PROXY_SSL_HEADER = ('HTTP_X_FORWARDED_PROTO', 'https')
+    SECURE_HSTS_SECONDS = int(env('DJANGO_SECURE_HSTS_SECONDS', '31536000'))

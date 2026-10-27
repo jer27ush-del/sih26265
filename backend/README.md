@@ -91,6 +91,43 @@ python manage.py run_jobs
 It moves FDRs to Nearing Maturity and Matured as their dates arrive, creates in-portal reminders,
 and sends maturity emails. Running it twice creates no duplicate reminders or emails.
 
+## Vercel deployment notes
+
+Vercel's Python runtime supports Django WSGI applications. For this repository, deploy the
+backend as a Vercel project with **Root Directory** set to `backend`; Vercel can detect
+`manage.py` and `config.wsgi.application`, so a separate `vercel.json` is not required.
+Deploy `aicte-fdr-phase1/` as a separate Vercel frontend project and set
+`VITE_API_BASE_URL` to the backend's full API base URL, for example
+`https://your-backend.vercel.app/api`.
+
+Configure these backend environment variables in Vercel (never commit their values):
+
+- `DJANGO_DEBUG=0`, `DJANGO_SECRET_KEY` (a unique random secret), and `FDR_DEMO_MODE=0`.
+- `DJANGO_SECURE_HSTS_SECONDS` may be left at its secure production default of one year
+  (`31536000`) when all served domains use HTTPS.
+- `DJANGO_ALLOWED_HOSTS`: comma-separated exact backend hostnames, without `https://`.
+  Vercel's `VERCEL_URL` and `VERCEL_PROJECT_PRODUCTION_URL` are also added as exact hosts.
+- `DJANGO_CSRF_TRUSTED_ORIGINS`: comma-separated HTTPS origins, including the frontend
+  origin and any custom domain that submits Django CSRF-protected requests.
+- `DJANGO_CORS_ALLOWED_ORIGINS`: comma-separated exact frontend origins, including scheme,
+  such as `https://your-frontend.vercel.app`.
+- `DB_ENGINE=postgres` and `POSTGRES_DB`, `POSTGRES_USER`, `POSTGRES_PASSWORD`,
+  `POSTGRES_HOST`, and optionally `POSTGRES_PORT`. Use an external persistent PostgreSQL
+  provider; production settings reject SQLite and sample credentials.
+- `EMAIL_HOST`, `EMAIL_PORT`, `EMAIL_HOST_USER`, `EMAIL_HOST_PASSWORD`, `EMAIL_USE_TLS`,
+  `EMAIL_USE_SSL`, and `DEFAULT_FROM_EMAIL` if reminder emails are required.
+
+Deploy the frontend separately with `VITE_API_BASE_URL` set to the HTTPS backend API URL.
+Vite's `/api` proxy works only during local development. Do not copy real values from a local
+`.env` into source control.
+
+**File uploads are intentionally refused on Vercel** until a private durable object-storage
+backend is integrated. The current filesystem storage is not durable across serverless
+invocations and must not be used for production documents. The maturity `run_jobs`
+management command also needs a separate scheduler; deploying the WSGI app does not run it
+automatically. Apply migrations deliberately from a controlled deployment process after
+backing up the production database; do not run `seed_demo` in production.
+
 ## Testing
 
 Four layers, all of which passed on the final build (Python 3.12 with the Django 5.1.4 and DRF 3.15.2 pinned in `requirements.txt`, SQLite):

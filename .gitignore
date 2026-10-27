@@ -1,0 +1,29 @@
+# Environment files and secrets
+.env
+.env.*
+!.env.example
+backend/.env
+backend/.env.*
+!backend/.env.example
+aicte-fdr-phase1/.env
+aicte-fdr-phase1/.env.*
+!aicte-fdr-phase1/.env.example
+
+# Python
+.venv/
+**/__pycache__/
+*.py[cod]
+.pytest_cache/
+
+# Local databases and private uploads
+*.sqlite3
+backend/private_media/
+private_media/
+
+# Frontend build and dependencies
+node_modules/
+aicte-fdr-phase1/dist/
+
+# Deployment and editor state
+.vercel/
+.vscode/.ropeproject/

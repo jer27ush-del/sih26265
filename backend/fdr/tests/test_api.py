@@ -155,6 +155,20 @@ class MaturityEmailTests(SeededTestCase):
         self.assertEqual(mail.outbox, [])
 
 
+class DeploymentSafetyTests(SeededTestCase):
+    def test_document_upload_is_refused_on_vercel_without_durable_storage(self):
+        from django.core.files.uploadedfile import SimpleUploadedFile
+        from django.test import override_settings
+
+        with override_settings(IS_VERCEL=True):
+            with self.assertRaisesRegex(DomainError, 'unavailable on Vercel'):
+                services._store_document(
+                    self.own_fdr,
+                    SimpleUploadedFile('sample.pdf', b'%PDF-1.4 test document'),
+                    self.inst,
+                )
+
+
 class ApiTests(SeededTestCase):
     def setUp(self):
         self.client = APIClient()
